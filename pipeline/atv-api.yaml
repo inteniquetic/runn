@@ -1,0 +1,55 @@
+kind: pipeline
+name: atv-api
+token: 4ef8827d-ee1c-4a87-8607-c388c6758081
+
+steps:
+  - name: Checkout
+    commands:
+      - |
+        set -euo pipefail
+        BRANCH="${BRANCH:-main}"
+        git clone --branch "${BRANCH}" ssh@gitlab.com/project.git
+
+  - name: Notify Deploying
+    commands:
+      - |
+        set -euo pipefail
+        curl -X POST "http://discord.com/hook?token=${INNO_DISCORD}" \
+          -H "Content-Type: application/json" \
+          -d '{"message":"hello"}'
+
+  - name: Test
+    commands:
+      - echo "testing"
+
+  - name: Build
+    commands:
+      - |
+        set -euo pipefail
+        docker version
+        docker build -f Dockerfile.dev -t deploy-dev/demo-web .
+
+  - name: Deploy
+    commands:
+      - |
+        set -euo pipefail
+        printf "%s" "${ALIBABA_DOCKER_PASSWORD}" | docker login -u "${ALIBABA_DOCKER_USERNAME}" --password-stdin
+        LATEST_IMAGE_ID="$(docker images -q deploy-dev/demo-web | head -n 1)"
+        docker tag "${LATEST_IMAGE_ID}" registry-intl.ap-southeast-1.aliyuncs.com/dev/demo-web:latest
+        docker push registry-intl.ap-southeast-1.aliyuncs.com/dev/demo-web:latest
+
+  - name: Notify Deployed
+    commands:
+      - |
+        set -euo pipefail
+        curl -X POST "http://discord.com/hook?token=${INNO_DISCORD}" \
+          -H "Content-Type: application/json" \
+          -d '{"message":"hello"}'
+
+on_failure:
+  commands:
+    - |
+      set -euo pipefail
+      curl -X POST "http://discord.com/hook?token=${INNO_DISCORD}" \
+        -H "Content-Type: application/json" \
+        -d '{"message":"hello"}'
