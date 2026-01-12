@@ -6,7 +6,7 @@ use axum::{
 };
 use core_lib::webhooks::gitlab;
 use serde_json::Value;
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use tracing::{info, warn};
 
 #[derive(Clone)]
@@ -45,7 +45,16 @@ async fn gitlab_webhook(
     headers: HeaderMap,
     Json(payload): Json<Value>,
 ) -> StatusCode {
-    let request = match gitlab::handle_webhook(&headers, &pipeline, payload) {
+    let pipeline_path = PathBuf::from("pipeline").join(format!("{pipeline}.yaml"));
+    let secrets_path = PathBuf::from("pipeline").join("secrets.yml");
+
+    let request = match gitlab::handle_webhook(
+        &headers,
+        &pipeline,
+        payload,
+        &pipeline_path,
+        &secrets_path,
+    ) {
         Ok(request) => request,
         Err(err) => {
             warn!("invalid gitlab webhook: {:?}", err);

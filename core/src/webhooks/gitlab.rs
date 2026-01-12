@@ -1,6 +1,10 @@
 use http::{HeaderMap, StatusCode};
 use serde_json::Value;
+use std::path::Path;
 use tracing::info;
+
+use crate::pipeline::config::{load_webhook_token_name, PipelineConfigError};
+use crate::pipeline::secrets::load_secret_map;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GitLabEvent {
@@ -16,7 +20,10 @@ pub enum GitLabWebhookError {
     MissingTokenHeader,
     InvalidTokenHeader,
     InvalidToken,
-    MissingTokenEnv,
+    MissingWebhookTokenName,
+    MissingWebhookTokenValue(String),
+    PipelineConfig(PipelineConfigError),
+    Secrets(crate::pipeline::secrets::SecretLoadError),
 }
 
 #[derive(Debug)]
@@ -30,9 +37,17 @@ pub fn handle_webhook(
     headers: &HeaderMap,
     pipeline: &str,
     payload: Value,
+    pipeline_path: &Path,
+    secrets_path: &Path,
 ) -> Result<GitLabWebhookRequest, GitLabWebhookError> {
-    let token = expected_token_from_env()?;
-    validate_token(headers, &token)?;
+    let token_name = load_webhook_token_name(pipeline_path)
+        .map_err(GitLabWebhookError::PipelineConfig)?
+        .ok_or(GitLabWebhookError::MissingWebhookTokenName)?;
+    let secrets = load_secret_map(secrets_path).map_err(GitLabWebhookError::Secrets)?;
+    let token = secrets
+        .get(&token_name)
+        .ok_or_else(|| GitLabWebhookError::MissingWebhookTokenValue(token_name))?;
+    validate_token(headers, token)?;
     let event = event_from_headers(headers)?;
 
     Ok(GitLabWebhookRequest {
@@ -83,7 +98,11 @@ pub fn status_from_error(error: &GitLabWebhookError) -> StatusCode {
         GitLabWebhookError::MissingTokenHeader
         | GitLabWebhookError::InvalidTokenHeader
         | GitLabWebhookError::InvalidToken
-        | GitLabWebhookError::MissingTokenEnv => StatusCode::UNAUTHORIZED,
+        | GitLabWebhookError::MissingWebhookTokenName
+        | GitLabWebhookError::MissingWebhookTokenValue(_) => StatusCode::UNAUTHORIZED,
+        GitLabWebhookError::PipelineConfig(_) | GitLabWebhookError::Secrets(_) => {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
     }
 }
 
@@ -101,11 +120,4 @@ pub fn trigger_pipeline(request: &GitLabWebhookRequest) {
     }
 
     info!("payload: {}", request.payload);
-}
-
-fn expected_token_from_env() -> Result<String, GitLabWebhookError> {
-    match std::env::var("GITLAB_WEBHOOK_TOKEN") {
-        Ok(token) if !token.is_empty() => Ok(token),
-        _ => Err(GitLabWebhookError::MissingTokenEnv),
-    }
 }

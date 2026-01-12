@@ -1,6 +1,7 @@
 [workspace]
 members = [ "core","runn"]
 resolver = "3"
+edition = "2024"
 
 [workspace.dependencies]
 axum = "0.7"

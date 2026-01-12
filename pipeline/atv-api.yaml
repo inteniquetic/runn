@@ -1,6 +1,6 @@
 kind: pipeline
 name: atv-api
-token: 4ef8827d-ee1c-4a87-8607-c388c6758081
+webhook_token: GITLAB_WEBHOOK_TOKEN_ATV_API
 
 steps:
   - name: Checkout
